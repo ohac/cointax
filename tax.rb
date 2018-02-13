@@ -32,13 +32,13 @@ class CoinCheck
       "DAO" => 1.0,
       "JPY" => 500.0, # TODO
     }
-    TYPE_TABLE_WEB_TRADE = {
-      "売" => :sell,
-      "買" => :buy,
+    TYPE_TABLE_ORDERS = {
+      "sell" => :sell,
+      "buy" => :buy,
     }
-    TYPE_TABLE_WEB_BUYSELL = {
-      "完了" => :complete,
-      "手続き中" => :pending,
+    TYPE_TABLE_BUYS = {
+      "completed" => :completed,
+      "pending" => :pending,
     }
   end
   include Constants
@@ -66,7 +66,8 @@ end
 
 timetable = {}
 
-files = Dir.glob('*.csv')
+#files = Dir.glob(['zaif/*.csv', 'coincheck/*.csv', 'bitbank/*.csv'])
+files = Dir.glob(['coincheck/*.csv'])
 
 files.each do |fn|
   body = File.open(fn, 'r') do |fd|
@@ -74,21 +75,41 @@ files.each do |fn|
   end
   mode = nil
   case fn
-  when /^#{coincheckid}_/
+
+  when /^coincheck\/#{coincheckid}_/
     mode = :coincheck
     ym = fn.split(/[_.]/)[1,1].first
     year = ym[0,4].to_i
     month = ym[4,6].to_i
-  when /^cc_web_trade/
-    mode = :coincheck_web_trade
-  when /^cc_web_buysell/
-    mode = :coincheck_web_buysell
-  when /^cc_web_withdraw/
-    mode = :coincheck_web_withdraw
-  when /^#{zaifid}_/
+  when /^coincheck\/my-complete-orders-/
+    mode = :coincheck_orders
+  when /^coincheck\/buys-/
+    mode = :coincheck_buys
+  when /^coincheck\/sells-/
+    mode = :coincheck_sells
+  when /^coincheck\/withdraws-/
+    mode = :coincheck_withdraws
+  when /^coincheck\/deposits-/
+    mode = :coincheck_deposits
+  when /^coincheck\/send-/
+    mode = :coincheck_send
+
+  when /^zaif\/#{zaifid}_/
     mode = :zaif
-  when /^trade_history/
+  # TODO btc_deposit.csv zaif
+  # TODO btc_withdraw.csv zaif
+  # TODO jpy_deposit.csv
+  # TODO mona_deposit.csv
+  # TODO mona_withdraw.csv
+  # TODO order_history.csv
+  # TODO token_deposit.csv
+  # TODO trade_history.csv
+
+  when /^bitbank\/trade_history/
     mode = :bitbank
+  # TODO bitbank_deposit
+  # TODO bitbank_withdraw
+
   end
 
   i = 0
@@ -124,18 +145,20 @@ files.each do |fn|
         type = CoinCheck::TYPE_TABLE[typestr]
         amount = csv[3].to_f
         coinid = csv[4]
-        timetable[date] ||= []
-        timetable[date] << {
-          :type => type, :amount => amount, :coinid => coinid
-        }
+        if type == :etc
+          timetable[date] ||= []
+          timetable[date] << {
+            :type => type, :amount => amount, :coinid => coinid
+          }
+        end
       end
-    when :coincheck_web_trade
+    when :coincheck_orders
       if i == 0
       else
         datestr = csv[0]
         date = DateTime.parse(datestr)
         typestr = csv[1]
-        type = CoinCheck::TYPE_TABLE_WEB_TRADE[typestr]
+        type = CoinCheck::TYPE_TABLE_ORDERS[typestr]
         rate = csv[3].to_f
         amount = csv[4].to_f
         jpy = csv[5].to_f
@@ -148,34 +171,84 @@ files.each do |fn|
           :type => type, :amount => jpy, :coinid => 'JPY'
         }
       end
-    when :coincheck_web_buysell
-      datestr = csv[0]
-      date = DateTime.parse(datestr)
-      typestr = csv[1]
-      type = CoinCheck::TYPE_TABLE_WEB_BUYSELL[typestr]
-      amount1 = -csv[2].to_f
-      coinid1 = csv[3]
-      amount2 = csv[4].to_f
-      coinid2 = csv[5]
-      timetable[date] ||= []
-      timetable[date] << {
-        :type => type, :amount => amount1, :coinid => coinid1
-      }
-      timetable[date] << {
-        :type => type, :amount => amount2, :coinid => coinid2
-      }
-    when :coincheck_web_withdraw
-      datestr = csv[0]
-      date = DateTime.parse(datestr)
-      typestr = csv[1]
-      type = CoinCheck::TYPE_TABLE_WEB_BUYSELL[typestr]
-      fee = -csv[3].to_f
-      amount = -csv[5].to_f
-      coinid = csv[6]
-      timetable[date] ||= []
-      timetable[date] << {
-        :type => :out, :amount => amount + fee, :coinid => coinid
-      }
+    when :coincheck_buys
+      if i == 0
+      else
+        datestr = csv[6]
+        date = DateTime.parse(datestr)
+        typestr = csv[5]
+        type = CoinCheck::TYPE_TABLE_BUYS[typestr]
+        amount1 = csv[1].to_f
+        coinid1 = csv[3]
+        price = csv[2].to_f
+        coinid2 = csv[4]
+        timetable[date] ||= []
+        timetable[date] << {
+          :type => type, :amount => amount1, :coinid => coinid1
+        }
+        timetable[date] << {
+          :type => type, :amount => -price, :coinid => coinid2
+        }
+      end
+    when :coincheck_sells
+      if i == 0
+      else
+        datestr = csv[6]
+        date = DateTime.parse(datestr)
+        typestr = csv[5]
+        type = CoinCheck::TYPE_TABLE_BUYS[typestr]
+        amount1 = csv[1].to_f
+        coinid1 = csv[3]
+        price = csv[2].to_f
+        coinid2 = csv[4]
+        timetable[date] ||= []
+        timetable[date] << {
+          :type => type, :amount => -amount1, :coinid => coinid1
+        }
+        timetable[date] << {
+          :type => type, :amount => price, :coinid => coinid2
+        }
+      end
+    when :coincheck_deposits
+      if i == 0
+      else
+        datestr = csv[1]
+        date = DateTime.parse(datestr)
+        amount = csv[2].to_f
+        coinid = csv[3]
+        timetable[date] ||= []
+        timetable[date] << {
+          :type => :out, :amount => amount, :coinid => coinid
+        }
+      end
+
+    when :coincheck_withdraws
+      if i == 0
+      else
+        datestr = csv[1]
+        date = DateTime.parse(datestr)
+        amount = -csv[2].to_f
+        fee = -csv[3].to_f
+        timetable[date] ||= []
+        timetable[date] << {
+          :type => :out, :amount => amount + fee, :coinid => 'JPY'
+        }
+      end
+
+    when :coincheck_send
+      if i == 0
+      else
+        datestr = csv[1]
+        date = DateTime.parse(datestr)
+        coinid = csv[2]
+        amount = -csv[3].to_f
+        fee = -csv[5].to_f
+        timetable[date] ||= []
+        timetable[date] << {
+          :type => :out, :amount => amount + fee, :coinid => coinid
+        }
+      end
+
     when :zaif
       if i == 0
       else
@@ -293,7 +366,9 @@ sorted.each do |v|
       current_stat[coinid][:amount] += amount
     end
     if amount != 0.0
-      p [datestr, stat, current_stat.select{|k,v0|v0[:amount] != 0.0}.map{|v| '%s:%f' % [v[0], v[1][:amount]]}]
+      #p [datestr, stat, current_stat.select{|k,v0|v0[:amount] != 0.0}.map{|v| '%s:%f' % [v[0], v[1][:amount]]}]
+      pcoins = ['JPY','BTC']
+      puts [datestr, current_stat.select{|k,v0|pcoins.include?(k)}.map{|v| '%s:%f' % [v[0], v[1][:amount]]}.join(' ')].join(' ')
     end
   end
 end
