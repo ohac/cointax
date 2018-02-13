@@ -9,7 +9,6 @@ setting = JSON.parse(json)
 coincheckid = setting['coincheckid']
 zaifid = setting['zaifid']
 
-
 class CoinCheck
   module Constants
     TYPE_TABLE = {
@@ -20,8 +19,46 @@ class CoinCheck
       "指値注文をキャンセル" => :cancel,
       "振替" => nil,
       "購入" => :buy,
-      "送金" => :out,
-      "銀行振込で出金" => :out,
+      "送金" => :out, # TODO fee
+      "銀行振込で出金" => :out, # TODO fee
+    }
+    OUT_FEE_TABLE = {
+      "ZEC" => 0.001,
+      "REP" => 0.01,
+      "XRP" => 0.15,
+      "BTC" => 0.0005, # TODO 0.0002 (-2016/11?)
+      "ETH" => 0.01,
+      "ETC" => 0.01,
+      "DAO" => 1.0,
+      "JPY" => 500.0, # TODO
+    }
+    TYPE_TABLE_WEB_TRADE = {
+      "売" => :sell,
+      "買" => :buy,
+    }
+    TYPE_TABLE_WEB_BUYSELL = {
+      "完了" => :complete,
+      "手続き中" => :pending,
+    }
+  end
+  include Constants
+end
+
+class Zaif
+  module Constants
+    TYPE_TABLE = {
+      "bid" => :buy,
+      "ask" => :sell,
+    }
+  end
+  include Constants
+end
+
+class BitBank
+  module Constants
+    TYPE_TABLE = {
+      "buy" => :buy,
+      "sell" => :sell,
     }
   end
   include Constants
@@ -42,6 +79,12 @@ files.each do |fn|
     ym = fn.split(/[_.]/)[1,1].first
     year = ym[0,4].to_i
     month = ym[4,6].to_i
+  when /^cc_web_trade/
+    mode = :coincheck_web_trade
+  when /^cc_web_buysell/
+    mode = :coincheck_web_buysell
+  when /^cc_web_withdraw/
+    mode = :coincheck_web_withdraw
   when /^#{zaifid}_/
     mode = :zaif
   when /^trade_history/
@@ -86,8 +129,99 @@ files.each do |fn|
           :type => type, :amount => amount, :coinid => coinid
         }
       end
+    when :coincheck_web_trade
+      if i == 0
+      else
+        datestr = csv[0]
+        date = DateTime.parse(datestr)
+        typestr = csv[1]
+        type = CoinCheck::TYPE_TABLE_WEB_TRADE[typestr]
+        rate = csv[3].to_f
+        amount = csv[4].to_f
+        jpy = csv[5].to_f
+        jpyfee = csv[6].to_f
+        timetable[date] ||= []
+        timetable[date] << {
+          :type => type, :amount => amount, :coinid => 'BTC'
+        }
+        timetable[date] << {
+          :type => type, :amount => jpy, :coinid => 'JPY'
+        }
+      end
+    when :coincheck_web_buysell
+      datestr = csv[0]
+      date = DateTime.parse(datestr)
+      typestr = csv[1]
+      type = CoinCheck::TYPE_TABLE_WEB_BUYSELL[typestr]
+      amount1 = -csv[2].to_f
+      coinid1 = csv[3]
+      amount2 = csv[4].to_f
+      coinid2 = csv[5]
+      timetable[date] ||= []
+      timetable[date] << {
+        :type => type, :amount => amount1, :coinid => coinid1
+      }
+      timetable[date] << {
+        :type => type, :amount => amount2, :coinid => coinid2
+      }
+    when :coincheck_web_withdraw
+      datestr = csv[0]
+      date = DateTime.parse(datestr)
+      typestr = csv[1]
+      type = CoinCheck::TYPE_TABLE_WEB_BUYSELL[typestr]
+      fee = -csv[3].to_f
+      amount = -csv[5].to_f
+      coinid = csv[6]
+      timetable[date] ||= []
+      timetable[date] << {
+        :type => :out, :amount => amount + fee, :coinid => coinid
+      }
     when :zaif
+      if i == 0
+      else
+        coinpair = csv[0][1..-2].upcase
+        coinid1, coinid2 = coinpair.split('_')
+        typestr = csv[1][1..-2]
+        type = Zaif::TYPE_TABLE[typestr]
+        pricestr = csv[2][1..-2]
+        price = pricestr.to_f
+        amountstr = csv[3][1..-2]
+        amount = amountstr.to_f
+        feestr = csv[4][1..-2]
+        fee = feestr.to_f
+        bonusstr = csv[5][1..-2]
+        bonus = bonusstr.to_f
+        datestr = csv[6][1..-2].split('.').first
+        date = DateTime.parse(datestr)
+        amount = -amount if type == :sell
+        timetable[date] ||= []
+        timetable[date] << {
+          :type => type, :amount => amount, :coinid => coinid1
+        }
+        timetable[date] << {
+          :type => type, :amount => -amount * price, :coinid => coinid2
+        }
+      end
     when :bitbank
+      if i == 0
+      else
+        coinpair = csv[2].upcase
+        coinid1, coinid2 = coinpair.split('_')
+        typestr = csv[3]
+        type = BitBank::TYPE_TABLE[typestr]
+        amount = csv[4].to_f
+        price = csv[5].to_f
+        fee = csv[6].to_f
+        datestr = csv[8]
+        date = DateTime.parse(datestr)
+        timetable[date] ||= []
+        timetable[date] << {
+          :type => type, :amount => amount, :coinid => coinid1
+        }
+        timetable[date] << {
+          :type => type, :amount => -amount * price, :coinid => coinid2
+        }
+      end
     end
     i += 1
   end
