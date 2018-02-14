@@ -67,7 +67,9 @@ end
 timetable = {}
 
 #files = Dir.glob(['zaif/*.csv', 'coincheck/*.csv', 'bitbank/*.csv'])
-files = Dir.glob(['coincheck/*.csv'])
+#files = Dir.glob(['coincheck/*.csv'])
+#files = Dir.glob(['zaif/*.csv'])
+files = Dir.glob(['bitbank/*.csv'])
 
 files.each do |fn|
   body = File.open(fn, 'r') do |fd|
@@ -96,19 +98,17 @@ files.each do |fn|
 
   when /^zaif\/#{zaifid}_/
     mode = :zaif
-  # TODO btc_deposit.csv zaif
-  # TODO btc_withdraw.csv zaif
-  # TODO jpy_deposit.csv
-  # TODO mona_deposit.csv
-  # TODO mona_withdraw.csv
-  # TODO order_history.csv
-  # TODO token_deposit.csv
-  # TODO trade_history.csv
+  when /^zaif\/.*_deposit.csv/
+    mode = :zaif_deposit
+  when /^zaif\/.*_withdraw.csv/
+    mode = :zaif_withdraw
 
   when /^bitbank\/trade_history/
     mode = :bitbank
-  # TODO bitbank_deposit
-  # TODO bitbank_withdraw
+  # TODO bitbank/order_history.csv
+  # TODO bitbank/trade_history.csv
+  # TODO bitbank/bitbank_deposit
+  # TODO bitbank/bitbank_withdraw
 
   end
 
@@ -275,6 +275,48 @@ files.each do |fn|
           :type => type, :amount => -amount * price, :coinid => coinid2
         }
       end
+    when :zaif_deposit
+      if i == 0
+      else
+        datestr = csv[0].split('.').first
+        date = DateTime.parse(datestr)
+        case fn
+        when /token_deposit.csv$/
+          coinid = csv[1]
+          amountstr = csv[2]
+          amount = amountstr.to_f
+          timetable[date] ||= []
+          timetable[date] << {
+            :type => type, :amount => amount, :coinid => coinid
+          }
+        else
+          amountstr = csv[1]
+          amount = amountstr.to_f
+          coinid = fn.split(/[\/_]/)[1].upcase
+          timetable[date] ||= []
+          timetable[date] << {
+            :type => type, :amount => amount, :coinid => coinid
+          }
+        end
+      end
+    when :zaif_withdraw
+      if i == 0
+      else
+        case fn
+        when /token_withdraw.csv$/
+        else
+          datestr = csv[0].split('.').first
+          date = DateTime.parse(datestr)
+          amountstr = csv[1]
+          amount = amountstr.to_f
+          fee = csv[2].to_f
+          coinid = fn.split(/[\/_]/)[1].upcase
+          timetable[date] ||= []
+          timetable[date] << {
+            :type => type, :amount => -(amount + fee), :coinid => coinid
+          }
+        end
+      end
     when :bitbank
       if i == 0
       else
@@ -366,9 +408,9 @@ sorted.each do |v|
       current_stat[coinid][:amount] += amount
     end
     if amount != 0.0
-      #p [datestr, stat, current_stat.select{|k,v0|v0[:amount] != 0.0}.map{|v| '%s:%f' % [v[0], v[1][:amount]]}]
-      pcoins = ['JPY','BTC']
-      puts [datestr, current_stat.select{|k,v0|pcoins.include?(k)}.map{|v| '%s:%f' % [v[0], v[1][:amount]]}.join(' ')].join(' ')
+      puts [datestr, current_stat.select{|k,v0|v0[:amount] != 0.0}.map{|v| '%s:%f' % [v[0], v[1][:amount]]}.join(' ')].join(' ')
+      pcoins = ['JPY','BTC','MONA']
+      #puts [datestr, current_stat.select{|k,v0|pcoins.include?(k)}.map{|v| '%s:%f' % [v[0], v[1][:amount]]}.join(' ')].join(' ')
     end
   end
 end
