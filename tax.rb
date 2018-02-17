@@ -6,8 +6,19 @@ json = File.open('setting.json', 'r') do |fd|
   fd.read()
 end
 setting = JSON.parse(json)
-coincheckid = setting['coincheckid']
-zaifid = setting['zaifid']
+
+dust_table = {
+  'JPY' => 0.1,
+  'BTC' => 0.0000001,
+  'LTC' => 0.00001,
+  'MONA' => 0.0001,
+  'MIZUKI' => 0.1,
+  'SHIRAHOSHI' => 0.1,
+  'ICHARLOTTE' => 0.1,
+  'MAMICHANNEL' => 0.1,
+  'HINANOMAI' => 0.1,
+  'RURU' => 0.1,
+}
 
 class CoinCheck
   module Constants
@@ -64,58 +75,75 @@ class BitBank
   include Constants
 end
 
-timetable = {}
+ex_table = {}
 
-#files = Dir.glob(['zaif/*.csv', 'coincheck/*.csv', 'bitbank/*.csv'])
-#files = Dir.glob(['coincheck/*.csv'])
-#files = Dir.glob(['zaif/*.csv'])
-files = Dir.glob(['bitbank/*.csv'])
+files = Dir.glob(['zaif/*.csv', 'coincheck/*.csv', 'bitbank/*.csv'])
 
 files.each do |fn|
   body = File.open(fn, 'r') do |fd|
     fd.read()
   end
   mode = nil
+  exchange_id = nil
   case fn
 
   when /^coincheck\/[0-9]+_/
+    exchange_id = :coincheck
     mode = :coincheck
     ym = fn.split(/[_.]/)[1,1].first
     year = ym[0,4].to_i
     month = ym[4,6].to_i
   when /^coincheck\/my-complete-orders-/
+    exchange_id = :coincheck
     mode = :coincheck_orders
   when /^coincheck\/buys-/
+    exchange_id = :coincheck
     mode = :coincheck_buys
   when /^coincheck\/sells-/
+    exchange_id = :coincheck
     mode = :coincheck_sells
   when /^coincheck\/withdraws-/
+    exchange_id = :coincheck
     mode = :coincheck_withdraws
   when /^coincheck\/deposits-/
+    exchange_id = :coincheck
     mode = :coincheck_deposits
   when /^coincheck\/send-/
+    exchange_id = :coincheck
     mode = :coincheck_send
 
   when /^zaif\/[0-9]+_/
+    exchange_id = :zaif
     mode = :zaif
   when /^zaif\/.*_deposit.csv/
+    exchange_id = :zaif
     mode = :zaif_deposit
   when /^zaif\/.*_withdraw.csv/
+    exchange_id = :zaif
     mode = :zaif_withdraw
   when /^zaif\/obtain_bonus.csv/
+    exchange_id = :zaif
     mode = :zaif_obtain_bonus
 
   when /^bitbank\/trade_history/
+    exchange_id = :bitbank
     mode = :bitbank
   when /^bitbank\/withdraws-/
+    exchange_id = :bitbank
     mode = :bitbank_withdraws
   when /^bitbank\/deposits-/
+    exchange_id = :bitbank
     mode = :bitbank_deposits
   # TODO bitbank/order_history.csv
   # TODO bitbank/asset_records.csv
 
+  else
+    puts 'skip: ' + fn
+    next
   end
 
+  exchange = ex_table[exchange_id] ||= {}
+  timetable = exchange[:timetable] ||= {}
   i = 0
   coins = nil
   body.each_line do |line|
@@ -149,7 +177,7 @@ files.each do |fn|
         type = CoinCheck::TYPE_TABLE[typestr]
         amount = csv[3].to_f
         coinid = csv[4]
-        if type == :etc
+        if type == :etc # use affiliate only
           timetable[date] ||= []
           timetable[date] << {
             :type => type, :amount => amount, :coinid => coinid
@@ -398,95 +426,83 @@ files.each do |fn|
   end
 end
 
-current_stat = {
-}
+ex_table.each do |exid, exchange|
 
-cc_order_sell_jpy = nil
-cc_order_sell_btc = nil
-sorted = timetable.sort_by{|k, v| k}
-sorted.each do |v|
-  date = v[0]
-  datestr = date.strftime("%Y/%m/%d %H:%M:%S")
-  v[1].each do |stat|
-    coinid = stat[:coinid]
-    type = stat[:type]
-    amount = stat[:amount]
-    current_stat[coinid] ||= {
-      :amount => 0.0
-    }
-    case type
-    when :checkpoint
-      if current_stat[coinid][:amount] < amount - 0.0001
-        p [coinid, current_stat[coinid][:amount], amount]
-        current_stat[coinid][:amount] = amount
-      end
-    when :order
-      case coinid
-      when 'BTC'
-        cc_order_sell_btc = amount
-      when 'JPY'
-        cc_order_sell_jpy = amount
-      else
-        puts ['internal error', v]
-      end
-    when :exec
-      case coinid
-      when 'BTC'
-        rate = -cc_order_sell_jpy / amount
-        current_stat['BTC'][:amount] += amount
-        current_stat['JPY'][:amount] += cc_order_sell_jpy
-        cc_order_sell_jpy = nil
-      when 'JPY'
-        rate = amount / -cc_order_sell_btc
-        current_stat['BTC'][:amount] += cc_order_sell_btc
-        current_stat['JPY'][:amount] += amount
-        cc_order_sell_btc = nil
-      else
-        puts ['internal error', v]
-      end
-    when :cancel
-      case coinid
-      when 'BTC'
-        if cc_order_sell_btc.nil?
-          p :warn
+  timetable = exchange[:timetable]
+  current_stat = {}
+
+  cc_order_sell_jpy = nil
+  cc_order_sell_btc = nil
+  sorted = timetable.sort_by{|k, v| k}
+  sorted.each do |v|
+    date = v[0]
+    datestr = date.strftime("%Y/%m/%d %H:%M:%S")
+    v[1].each do |stat|
+      coinid = stat[:coinid]
+      type = stat[:type]
+      amount = stat[:amount]
+      current_stat[coinid] ||= {
+        :amount => 0.0
+      }
+      case type
+      when :checkpoint
+        if current_stat[coinid][:amount] < amount - 0.0001
+          p [coinid, current_stat[coinid][:amount], amount]
+          current_stat[coinid][:amount] = amount
         end
-        cc_order_sell_jpy = nil
-      when 'JPY'
-        if cc_order_sell_jpy.nil?
-          p :warn
+      when :order
+        case coinid
+        when 'BTC'
+          cc_order_sell_btc = amount
+        when 'JPY'
+          cc_order_sell_jpy = amount
+        else
+          puts ['internal error', v]
+        end
+      when :exec
+        case coinid
+        when 'BTC'
+          rate = -cc_order_sell_jpy / amount
+          current_stat['BTC'][:amount] += amount
+          current_stat['JPY'][:amount] += cc_order_sell_jpy
+          cc_order_sell_jpy = nil
+        when 'JPY'
+          rate = amount / -cc_order_sell_btc
+          current_stat['BTC'][:amount] += cc_order_sell_btc
           current_stat['JPY'][:amount] += amount
+          cc_order_sell_btc = nil
+        else
+          puts ['internal error', v]
         end
-        cc_order_sell_btc = nil
+      when :cancel
+        case coinid
+        when 'BTC'
+          if cc_order_sell_btc.nil?
+            p :warn
+          end
+          cc_order_sell_jpy = nil
+        when 'JPY'
+          if cc_order_sell_jpy.nil?
+            p :warn
+            current_stat['JPY'][:amount] += amount
+          end
+          cc_order_sell_btc = nil
+        else
+          puts ['internal error', v]
+        end
       else
-        puts ['internal error', v]
+        current_stat[coinid][:amount] += amount
       end
-    else
-      current_stat[coinid][:amount] += amount
-    end
-    if amount != 0.0
-      puts [datestr, current_stat.select{|k,v0|v0[:amount] != 0.0}.map{|v| '%s:%.3f' % [v[0][0,3], v[1][:amount]]}.join(' ')].join(' ')
-      pcoins = ['JPY','BTC','MONA']
-      #puts [datestr, current_stat.select{|k,v0|pcoins.include?(k)}.map{|v| '%s:%f' % [v[0], v[1][:amount]]}.join(' ')].join(' ')
     end
   end
+  exchange[:current] = current_stat
 end
 
-dust_table = {
-  'JPY' => 0.1,
-  'BTC' => 0.0000001,
-  'LTC' => 0.00001,
-  'MONA' => 0.0001,
-  'MIZUKI' => 0.1,
-  'SHIRAHOSHI' => 0.1,
-  'ICHARLOTTE' => 0.1,
-  'MAMICHANNEL' => 0.1,
-  'HINANOMAI' => 0.1,
-  'RURU' => 0.1,
-}
-
-not_dust = current_stat.select do |k,v0|
-  dust = dust_table[k] || 0.000001
-  v0[:amount].abs > dust
+ex_table.each do |exid, exchange|
+  current_stat = exchange[:current]
+  not_dust = current_stat.select do |k,v0|
+    dust = dust_table[k] || 0.000001
+    v0[:amount].abs > dust
+  end
+  puts exid.to_s + ': ' + not_dust.map{|v| '%s:%.3f' % [v[0][0,3], v[1][:amount]]}.join(' ')
 end
-
-puts not_dust.map{|v| '%s:%.3f' % [v[0][0,3], v[1][:amount]]}.join(' ')
