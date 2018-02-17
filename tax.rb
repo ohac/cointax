@@ -102,8 +102,8 @@ files.each do |fn|
     mode = :zaif_deposit
   when /^zaif\/.*_withdraw.csv/
     mode = :zaif_withdraw
-  # TODO zaif/obtain_bonus.csv
-  # TODO zaif/tip_receive.csv
+  when /^zaif\/obtain_bonus.csv/
+    mode = :zaif_obtain_bonus
 
   when /^bitbank\/trade_history/
     mode = :bitbank
@@ -319,6 +319,19 @@ files.each do |fn|
           }
         end
       end
+    when :zaif_obtain_bonus
+      if i == 0
+      else
+        datestr = csv[0].split('.').first
+        date = DateTime.parse(datestr)
+        amount = csv[2].to_f
+        coinid = csv[3].upcase
+        timetable[date] ||= []
+        timetable[date] << {
+          :type => :in, :amount => amount, :coinid => coinid
+        }
+      end
+
     when :bitbank
       if i == 0
       else
