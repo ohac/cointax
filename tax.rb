@@ -68,8 +68,8 @@ timetable = {}
 
 #files = Dir.glob(['zaif/*.csv', 'coincheck/*.csv', 'bitbank/*.csv'])
 #files = Dir.glob(['coincheck/*.csv'])
-#files = Dir.glob(['zaif/*.csv'])
-files = Dir.glob(['bitbank/*.csv'])
+files = Dir.glob(['zaif/*.csv'])
+#files = Dir.glob(['bitbank/*.csv'])
 
 files.each do |fn|
   body = File.open(fn, 'r') do |fd|
@@ -78,7 +78,7 @@ files.each do |fn|
   mode = nil
   case fn
 
-  when /^coincheck\/#{coincheckid}_/
+  when /^coincheck\/[0-9]+_/
     mode = :coincheck
     ym = fn.split(/[_.]/)[1,1].first
     year = ym[0,4].to_i
@@ -96,12 +96,14 @@ files.each do |fn|
   when /^coincheck\/send-/
     mode = :coincheck_send
 
-  when /^zaif\/#{zaifid}_/
+  when /^zaif\/[0-9]+_/
     mode = :zaif
   when /^zaif\/.*_deposit.csv/
     mode = :zaif_deposit
   when /^zaif\/.*_withdraw.csv/
     mode = :zaif_withdraw
+  # TODO zaif/obtain_bonus.csv
+  # TODO zaif/tip_receive.csv
 
   when /^bitbank\/trade_history/
     mode = :bitbank
@@ -408,7 +410,7 @@ sorted.each do |v|
       current_stat[coinid][:amount] += amount
     end
     if amount != 0.0
-      puts [datestr, current_stat.select{|k,v0|v0[:amount] != 0.0}.map{|v| '%s:%f' % [v[0], v[1][:amount]]}.join(' ')].join(' ')
+      puts [datestr, current_stat.select{|k,v0|v0[:amount] != 0.0}.map{|v| '%s:%.3f' % [v[0][0,3], v[1][:amount]]}.join(' ')].join(' ')
       pcoins = ['JPY','BTC','MONA']
       #puts [datestr, current_stat.select{|k,v0|pcoins.include?(k)}.map{|v| '%s:%f' % [v[0], v[1][:amount]]}.join(' ')].join(' ')
     end
