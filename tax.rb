@@ -68,8 +68,8 @@ timetable = {}
 
 #files = Dir.glob(['zaif/*.csv', 'coincheck/*.csv', 'bitbank/*.csv'])
 #files = Dir.glob(['coincheck/*.csv'])
-files = Dir.glob(['zaif/*.csv'])
-#files = Dir.glob(['bitbank/*.csv'])
+#files = Dir.glob(['zaif/*.csv'])
+files = Dir.glob(['bitbank/*.csv'])
 
 files.each do |fn|
   body = File.open(fn, 'r') do |fd|
@@ -107,10 +107,12 @@ files.each do |fn|
 
   when /^bitbank\/trade_history/
     mode = :bitbank
+  when /^bitbank\/withdraws-/
+    mode = :bitbank_withdraws
+  when /^bitbank\/deposits-/
+    mode = :bitbank_deposits
   # TODO bitbank/order_history.csv
-  # TODO bitbank/trade_history.csv
-  # TODO bitbank/bitbank_deposit
-  # TODO bitbank/bitbank_withdraw
+  # TODO bitbank/asset_records.csv
 
   end
 
@@ -223,7 +225,6 @@ files.each do |fn|
           :type => :out, :amount => amount, :coinid => coinid
         }
       end
-
     when :coincheck_withdraws
       if i == 0
       else
@@ -236,7 +237,6 @@ files.each do |fn|
           :type => :out, :amount => amount + fee, :coinid => 'JPY'
         }
       end
-
     when :coincheck_send
       if i == 0
       else
@@ -337,6 +337,8 @@ files.each do |fn|
       else
         coinpair = csv[2].upcase
         coinid1, coinid2 = coinpair.split('_')
+        coinid1 = 'BCH' if coinid1 == 'BCC'
+        coinid2 = 'BCH' if coinid2 == 'BCC'
         typestr = csv[3]
         type = BitBank::TYPE_TABLE[typestr]
         amount = csv[4].to_f
@@ -345,11 +347,50 @@ files.each do |fn|
         datestr = csv[8]
         date = DateTime.parse(datestr)
         timetable[date] ||= []
+        case type
+        when :buy
+          timetable[date] << {
+            :type => type, :amount => amount, :coinid => coinid1
+          }
+          timetable[date] << {
+            :type => type, :amount => -amount * price - fee,
+            :coinid => coinid2
+          }
+        when :sell
+          timetable[date] << {
+            :type => type, :amount => -amount, :coinid => coinid1
+          }
+          timetable[date] << {
+            :type => type, :amount => amount * price + fee,
+            :coinid => coinid2
+          }
+        end
+      end
+    when :bitbank_deposits
+      if i == 0
+      else
+        datestr = csv[1]
+        date = DateTime.parse(datestr)
+        amount = csv[2].to_f
+        coinid = csv[3]
+        coinid = 'BCH' if coinid == 'BCC'
+        timetable[date] ||= []
         timetable[date] << {
-          :type => type, :amount => amount, :coinid => coinid1
+          :type => :in, :amount => amount, :coinid => coinid
         }
+      end
+    when :bitbank_withdraws
+      if i == 0
+      else
+        datestr = csv[1]
+        date = DateTime.parse(datestr)
+        amount = -csv[2].to_f
+        fee = -csv[3].to_f
+        coinid = csv[4]
+        coinid = 'BCH' if coinid == 'BCC'
+        timetable[date] ||= []
         timetable[date] << {
-          :type => type, :amount => -amount * price, :coinid => coinid2
+          :type => :out, :amount => amount + fee, :coinid => coinid
         }
       end
     end
