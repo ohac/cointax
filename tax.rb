@@ -416,3 +416,23 @@ sorted.each do |v|
     end
   end
 end
+
+dust_table = {
+  'JPY' => 0.1,
+  'BTC' => 0.0000001,
+  'LTC' => 0.00001,
+  'MONA' => 0.0001,
+  'MIZUKI' => 0.1,
+  'SHIRAHOSHI' => 0.1,
+  'ICHARLOTTE' => 0.1,
+  'MAMICHANNEL' => 0.1,
+  'HINANOMAI' => 0.1,
+  'RURU' => 0.1,
+}
+
+not_dust = current_stat.select do |k,v0|
+  dust = dust_table[k] || 0.000001
+  v0[:amount].abs > dust
+end
+
+puts not_dust.map{|v| '%s:%.3f' % [v[0][0,3], v[1][:amount]]}.join(' ')
