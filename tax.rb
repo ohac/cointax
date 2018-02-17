@@ -23,25 +23,9 @@ dust_table = {
 class CoinCheck
   module Constants
     TYPE_TABLE = {
-      "入金" => :in,
-      "取引が成約" => :exec,
       "アフィリエイト報酬" => :etc,
       "指値注文" => :order,
       "指値注文をキャンセル" => :cancel,
-      "振替" => nil,
-      "購入" => :buy,
-      "送金" => :out, # TODO fee
-      "銀行振込で出金" => :out, # TODO fee
-    }
-    OUT_FEE_TABLE = {
-      "ZEC" => 0.001,
-      "REP" => 0.01,
-      "XRP" => 0.15,
-      "BTC" => 0.0005, # TODO 0.0002 (-2016/11?)
-      "ETH" => 0.01,
-      "ETC" => 0.01,
-      "DAO" => 1.0,
-      "JPY" => 500.0, # TODO
     }
     TYPE_TABLE_ORDERS = {
       "sell" => :sell,
@@ -151,9 +135,9 @@ files.each do |fn|
     case mode
     when :coincheck
       if i == 0
-      elsif i == 1
+      elsif i == 1 # use for checkpoint
         coins = csv[5..-1] # JPY, BTC, ...
-      elsif csv[0] == ''
+      elsif csv[0] == '' # use for checkpoint
         month += 1
         if month == 13
           year += 1
@@ -177,7 +161,7 @@ files.each do |fn|
         type = CoinCheck::TYPE_TABLE[typestr]
         amount = csv[3].to_f
         coinid = csv[4]
-        if type == :etc # use affiliate only
+        if [:etc, :order, :cancel].include?(type)
           timetable[date] ||= []
           timetable[date] << {
             :type => type, :amount => amount, :coinid => coinid
@@ -206,40 +190,54 @@ files.each do |fn|
     when :coincheck_buys
       if i == 0
       else
-        datestr = csv[6]
-        date = DateTime.parse(datestr)
         typestr = csv[5]
         type = CoinCheck::TYPE_TABLE_BUYS[typestr]
-        amount1 = csv[1].to_f
-        coinid1 = csv[3]
-        price = csv[2].to_f
-        coinid2 = csv[4]
-        timetable[date] ||= []
-        timetable[date] << {
-          :type => type, :amount => amount1, :coinid => coinid1
-        }
-        timetable[date] << {
-          :type => type, :amount => -price, :coinid => coinid2
-        }
+        if type == :completed
+          datestr = csv[6]
+          date = DateTime.parse(datestr)
+          amount1 = csv[1].to_f
+          coinid1 = csv[3]
+          price = csv[2].to_f
+          coinid2 = csv[4]
+          unit_price = price / amount1
+          timetable[date] ||= []
+          timetable[date] << {
+            :type => type, :amount => amount1, :coinid => coinid1
+          }
+          timetable[date] << {
+            :type => type, :amount => -price, :coinid => coinid2
+          }
+          timetable[date] << {
+            :type => :tax, :amount => amount1, :coinid => coinid1,
+            :unit_price => unit_price, :unit => coinid2
+          }
+        end
       end
     when :coincheck_sells
       if i == 0
       else
-        datestr = csv[6]
-        date = DateTime.parse(datestr)
         typestr = csv[5]
         type = CoinCheck::TYPE_TABLE_BUYS[typestr]
-        amount1 = csv[1].to_f
-        coinid1 = csv[3]
-        price = csv[2].to_f
-        coinid2 = csv[4]
-        timetable[date] ||= []
-        timetable[date] << {
-          :type => type, :amount => -amount1, :coinid => coinid1
-        }
-        timetable[date] << {
-          :type => type, :amount => price, :coinid => coinid2
-        }
+        if type == :completed
+          datestr = csv[6]
+          date = DateTime.parse(datestr)
+          amount1 = csv[1].to_f
+          coinid1 = csv[3]
+          price = csv[2].to_f
+          coinid2 = csv[4]
+          unit_price = price / amount1
+          timetable[date] ||= []
+          timetable[date] << {
+            :type => type, :amount => -amount1, :coinid => coinid1
+          }
+          timetable[date] << {
+            :type => type, :amount => price, :coinid => coinid2
+          }
+          timetable[date] << {
+            :type => :tax, :amount => -amount1, :coinid => coinid1,
+            :unit_price => unit_price, :unit => coinid2
+          }
+        end
       end
     when :coincheck_deposits
       if i == 0
@@ -250,7 +248,7 @@ files.each do |fn|
         coinid = csv[3]
         timetable[date] ||= []
         timetable[date] << {
-          :type => :out, :amount => amount, :coinid => coinid
+          :type => :in, :amount => amount, :coinid => coinid
         }
       end
     when :coincheck_withdraws
@@ -276,6 +274,10 @@ files.each do |fn|
         timetable[date] ||= []
         timetable[date] << {
           :type => :out, :amount => amount + fee, :coinid => coinid
+        }
+        timetable[date] << {
+          :type => :tax, :amount => fee, :coinid => coinid,
+          :unit => 'JPY', :unit_price => 0.0
         }
       end
 
@@ -427,10 +429,9 @@ files.each do |fn|
 end
 
 ex_table.each do |exid, exchange|
-
   timetable = exchange[:timetable]
+  average_price = exchange[:average_price] ||= {}
   current_stat = {}
-
   cc_order_sell_jpy = nil
   cc_order_sell_btc = nil
   sorted = timetable.sort_by{|k, v| k}
@@ -446,8 +447,9 @@ ex_table.each do |exid, exchange|
       }
       case type
       when :checkpoint
-        if current_stat[coinid][:amount] < amount - 0.0001
-          p [coinid, current_stat[coinid][:amount], amount]
+        dust = dust_table[coinid] || 0.000001
+        if (current_stat[coinid][:amount] - amount).abs > dust
+          p [:checkpoint, datestr, coinid, current_stat[coinid][:amount], amount]
           current_stat[coinid][:amount] = amount
         end
       when :order
@@ -459,24 +461,40 @@ ex_table.each do |exid, exchange|
         else
           puts ['internal error', v]
         end
-      when :exec
-        puts ['internal error', v]
       when :cancel
         case coinid
         when 'BTC'
           if cc_order_sell_btc.nil?
-            p :warn
+            p :warn1
           end
           cc_order_sell_jpy = nil
         when 'JPY'
           if cc_order_sell_jpy.nil?
-            p :warn
+            p [:warn2, datestr, amount]
             current_stat['JPY'][:amount] += amount
           end
           cc_order_sell_btc = nil
         else
           puts ['internal error', v]
         end
+      when :tax
+        unit_price = stat[:unit_price]
+        unit = stat[:unit]
+        total_amount = current_stat[coinid][:amount]
+        ave = average_price[coinid] || 0.0
+        profit = 0.0
+        if amount > 0.0
+          total_price = (total_amount - amount) * ave + amount * unit_price
+          average_price[coinid] = total_price / total_amount
+        else
+          # TODO profit to tax
+          profit = (unit_price - ave) * -amount
+          p [:profit, profit, unit_price, ave, unit, total_amount, amount, coinid]
+        end
+
+      when nil
+        puts ['internal error', v]
+
       else
         current_stat[coinid][:amount] += amount
       end
