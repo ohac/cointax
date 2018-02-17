@@ -460,20 +460,7 @@ ex_table.each do |exid, exchange|
           puts ['internal error', v]
         end
       when :exec
-        case coinid
-        when 'BTC'
-          rate = -cc_order_sell_jpy / amount
-          current_stat['BTC'][:amount] += amount
-          current_stat['JPY'][:amount] += cc_order_sell_jpy
-          cc_order_sell_jpy = nil
-        when 'JPY'
-          rate = amount / -cc_order_sell_btc
-          current_stat['BTC'][:amount] += cc_order_sell_btc
-          current_stat['JPY'][:amount] += amount
-          cc_order_sell_btc = nil
-        else
-          puts ['internal error', v]
-        end
+        puts ['internal error', v]
       when :cancel
         case coinid
         when 'BTC'
