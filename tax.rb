@@ -7,6 +7,8 @@ json = File.open('setting.json', 'r') do |fd|
 end
 setting = JSON.parse(json)
 
+verbose = setting['verbose']
+
 dust_table = {
   'JPY' => 0.1,
   'BTC' => 0.0000001,
@@ -24,8 +26,6 @@ class CoinCheck
   module Constants
     TYPE_TABLE = {
       "アフィリエイト報酬" => :etc,
-      "指値注文" => :order,
-      "指値注文をキャンセル" => :cancel,
     }
     TYPE_TABLE_ORDERS = {
       "sell" => :sell,
@@ -122,7 +122,7 @@ files.each do |fn|
   # TODO bitbank/asset_records.csv
 
   else
-    puts 'skip: ' + fn
+    puts 'skip: ' + fn if verbose
     next
   end
 
@@ -161,7 +161,7 @@ files.each do |fn|
         type = CoinCheck::TYPE_TABLE[typestr]
         amount = csv[3].to_f
         coinid = csv[4]
-        if [:etc, :order, :cancel].include?(type)
+        if [:etc].include?(type)
           timetable[date] ||= []
           timetable[date] << {
             :type => type, :amount => amount, :coinid => coinid
@@ -319,7 +319,7 @@ files.each do |fn|
           amount = amountstr.to_f
           timetable[date] ||= []
           timetable[date] << {
-            :type => type, :amount => amount, :coinid => coinid
+            :type => :in, :amount => amount, :coinid => coinid
           }
         else
           amountstr = csv[1]
@@ -327,7 +327,7 @@ files.each do |fn|
           coinid = fn.split(/[\/_]/)[1].upcase
           timetable[date] ||= []
           timetable[date] << {
-            :type => type, :amount => amount, :coinid => coinid
+            :type => :in, :amount => amount, :coinid => coinid
           }
         end
       end
@@ -345,7 +345,7 @@ files.each do |fn|
           coinid = fn.split(/[\/_]/)[1].upcase
           timetable[date] ||= []
           timetable[date] << {
-            :type => type, :amount => -(amount + fee), :coinid => coinid
+            :type => :out, :amount => -(amount + fee), :coinid => coinid
           }
         end
       end
@@ -432,8 +432,6 @@ ex_table.each do |exid, exchange|
   timetable = exchange[:timetable]
   average_price = exchange[:average_price] ||= {}
   current_stat = {}
-  cc_order_sell_jpy = nil
-  cc_order_sell_btc = nil
   sorted = timetable.sort_by{|k, v| k}
   sorted.each do |v|
     date = v[0]
@@ -451,31 +449,6 @@ ex_table.each do |exid, exchange|
         if (current_stat[coinid][:amount] - amount).abs > dust
           p [:checkpoint, datestr, coinid, current_stat[coinid][:amount], amount]
           current_stat[coinid][:amount] = amount
-        end
-      when :order
-        case coinid
-        when 'BTC'
-          cc_order_sell_btc = amount
-        when 'JPY'
-          cc_order_sell_jpy = amount
-        else
-          puts ['internal error', v]
-        end
-      when :cancel
-        case coinid
-        when 'BTC'
-          if cc_order_sell_btc.nil?
-            p :warn1
-          end
-          cc_order_sell_jpy = nil
-        when 'JPY'
-          if cc_order_sell_jpy.nil?
-            p [:warn2, datestr, amount]
-            current_stat['JPY'][:amount] += amount
-          end
-          cc_order_sell_btc = nil
-        else
-          puts ['internal error', v]
         end
       when :tax
         unit_price = stat[:unit_price]
