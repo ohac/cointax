@@ -118,8 +118,6 @@ files.each do |fn|
   when /^bitbank\/deposits-/
     exchange_id = :bitbank
     mode = :bitbank_deposits
-  # TODO bitbank/order_history.csv
-  # TODO bitbank/asset_records.csv
 
   else
     puts 'skip: ' + fn if verbose
@@ -432,10 +430,16 @@ ex_table.each do |exid, exchange|
   timetable = exchange[:timetable]
   average_price = exchange[:average_price] ||= {}
   current_stat = {}
+  pre_year = nil
   sorted = timetable.sort_by{|k, v| k}
   sorted.each do |v|
     date = v[0]
     datestr = date.strftime("%Y/%m/%d %H:%M:%S")
+    if pre_year != date.year
+      pre_year = date.year
+      puts
+      puts '%4d年度: 取引所 %s' % [pre_year, exid]
+    end
     v[1].each do |stat|
       coinid = stat[:coinid]
       type = stat[:type]
@@ -462,7 +466,10 @@ ex_table.each do |exid, exchange|
         else
           # TODO profit to tax
           profit = (unit_price - ave) * -amount
-          p [:profit, profit, unit_price, ave, unit, total_amount, amount, coinid]
+          puts '%s 売却or手数料 %8.1f %s/%s x %8.2f 損益 %8.1f %s, 残高 %12.6f %s, 平均取得費 %8.1f %s/%s' %
+            [datestr,
+            unit_price, unit, coinid, -amount,
+            profit, unit, total_amount, coinid, ave, unit, coinid]
         end
 
       when nil
@@ -476,6 +483,8 @@ ex_table.each do |exid, exchange|
   exchange[:current] = current_stat
 end
 
+puts
+puts '最終残高'
 ex_table.each do |exid, exchange|
   current_stat = exchange[:current]
   not_dust = current_stat.select do |k,v0|
