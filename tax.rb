@@ -189,6 +189,11 @@ files.each do |fn|
         timetable[date] << {
           :type => type, :amount => jpy, :coinid => 'JPY'
         }
+        unit_price = -jpy / amount
+        timetable[date] << {
+          :type => :tax, :amount => amount, :coinid => 'BTC',
+          :tax => type, :unit => 'JPY', :unit_price => unit_price
+        }
       end
     when :coincheck_buys
       if i == 0
@@ -457,14 +462,21 @@ ex_table.each do |exid, exchange|
   average_price = exchange[:average_price] ||= {}
   current_stat = {}
   pre_year = nil
+  total_profit = 0.0
   sorted = timetable.sort_by{|k, v| k}
   sorted.each do |v|
     date = v[0]
     datestr = date.strftime("%Y/%m/%d %H:%M:%S")
     if pre_year != date.year
+      if pre_year
+        puts '----'
+        puts '%4d年度: 取引所 %s, 損益 %6.0f JPY' %
+          [pre_year, exid, total_profit]
+      end
       pre_year = date.year
       puts
       puts '%4d年度: 取引所 %s' % [pre_year, exid]
+      total_profit = 0.0
     end
     v[1].each do |stat|
       coinid = stat[:coinid]
@@ -490,20 +502,27 @@ ex_table.each do |exid, exchange|
         if amount > 0.0
           if taxtype == :income
             # TODO profit to tax
+            total_profit += amount
             puts '%s 報酬                               損益 %6d   JPY' %
               [datestr, amount]
           else
             total_price = (total_amount - amount) * ave + amount * unit_price
             average_price[coinid] = total_price / total_amount
+            if verbose
+              puts '                           %8.1f JPY/%s' %
+                [average_price[coinid], coinid]
+            end
           end
         else
           # TODO profit to tax
           if coinid == 'JPY'
             profit = amount
+            total_profit += profit
             puts '%s 手数料                             損益 %6d   JPY' %
               [datestr, profit]
           else
             profit = (unit_price - ave) * -amount
+            total_profit += profit
             puts '%s %s %8.1f %s/%s x %8.2f 損益 %8.1f %s, 残高 %12.6f %s, 平均単価 %8.1f %s/%s' %
               [datestr, taxtype == :fee ? '手数料' : '売却  ',
               unit_price, unit, coinid, -amount,
