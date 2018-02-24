@@ -270,7 +270,7 @@ files.each do |fn|
           timetable[date] << {
             :type => :tax, :amount => amount, :coinid => coinid,
             :tax => :average,
-            :unit => 'JPY', :unit_price => ave # TODO
+            :unit => 'JPY', :unit_price => ave
           }
         end
       end
@@ -306,7 +306,7 @@ files.each do |fn|
         timetable[date] << {
           :type => :tax, :amount => fee, :coinid => coinid,
           :tax => :fee,
-          :unit => 'JPY', :unit_price => 0.0 # TODO
+          :unit => 'JPY', :unit_price => 0.0
         }
       end
 
@@ -335,6 +335,24 @@ files.each do |fn|
         timetable[date] << {
           :type => type, :amount => -amount * price, :coinid => coinid2
         }
+        timetable[date] << {
+          :type => :tax, :amount => amount, :coinid => coinid1,
+          :tax => type, :unit => coinid2, :unit_price => price
+        }
+        if fee > 0
+          timetable[date] << {
+            :type => :tax, :amount => -fee, :coinid => coinid1,
+            :tax => :fee,
+            :unit => coinid2, :unit_price => 0.0
+          }
+        end
+        if bonus > 1.0 # 1 JPY
+          timetable[date] << {
+            :type => :tax, :amount => bonus, :coinid => 'JPY',
+            :tax => :income,
+            :unit => 'JPY', :unit_price => 1.0
+          }
+        end
       end
     when :zaif_deposit
       if i == 0
@@ -358,6 +376,12 @@ files.each do |fn|
           timetable[date] << {
             :type => :in, :amount => amount, :coinid => coinid
           }
+          if coinid != 'JPY'
+            timetable[date] << {
+              :type => :tax, :amount => amount, :coinid => coinid,
+              :tax => :average, :unit => 'JPY', :unit_price => 0.0 # TODO
+            }
+          end
         end
       end
     when :zaif_withdraw
@@ -376,6 +400,11 @@ files.each do |fn|
           timetable[date] << {
             :type => :out, :amount => -(amount + fee), :coinid => coinid
           }
+          timetable[date] << {
+            :type => :tax, :amount => -fee, :coinid => coinid,
+            :tax => :fee,
+            :unit => 'JPY', :unit_price => 0.0
+          }
         end
       end
     when :zaif_obtain_bonus
@@ -389,6 +418,13 @@ files.each do |fn|
         timetable[date] << {
           :type => :in, :amount => amount, :coinid => coinid
         }
+        if amount >= 1.0
+          timetable[date] << {
+            :type => :tax, :amount => amount, :coinid => coinid,
+            :tax => :income,
+            :unit => 'JPY', :unit_price => 1.0
+          }
+        end
       end
 
     when :bitbank
@@ -501,32 +537,30 @@ ex_table.each do |exid, exchange|
         profit = 0.0
         if amount > 0.0
           if taxtype == :income
-            # TODO profit to tax
             total_profit += amount
-            puts '%s 報酬                               損益 %6d   JPY' %
+            puts '%s 報酬                                 損益 %6d   JPY' %
               [datestr, amount]
           else
             total_price = (total_amount - amount) * ave + amount * unit_price
             average_price[coinid] = total_price / total_amount
             if verbose
-              puts '                           %8.1f JPY/%s' %
-                [average_price[coinid], coinid]
+              puts '                                                                                                             %9.1f  JPY/%4s' %
+                [average_price[coinid], coinid[0,4]]
             end
           end
         else
-          # TODO profit to tax
           if coinid == 'JPY'
             profit = amount
             total_profit += profit
-            puts '%s 手数料                             損益 %6d   JPY' %
+            puts '%s 手数料                               損益 %6d   JPY' %
               [datestr, profit]
           else
             profit = (unit_price - ave) * -amount
             total_profit += profit
-            puts '%s %s %8.1f %s/%s x %8.2f 損益 %8.1f %s, 残高 %12.6f %s, 平均単価 %8.1f %s/%s' %
+            puts '%s %s %8.1f %4s/%4s x %8.2f 損益 %8.1f %s, 残高 %12.6f %4s, 平均単価 %9.1f %4s/%4s' %
               [datestr, taxtype == :fee ? '手数料' : '売却  ',
-              unit_price, unit, coinid, -amount,
-              profit, unit, total_amount, coinid, ave, unit, coinid]
+              unit_price, unit, coinid[0,4], -amount,
+              profit, unit, total_amount, coinid[0,4], ave, unit, coinid[0,4]]
           end
         end
 
