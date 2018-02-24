@@ -377,9 +377,15 @@ files.each do |fn|
             :type => :in, :amount => amount, :coinid => coinid
           }
           if coinid != 'JPY'
+            ave = csv[3]
+            if ave.nil? || ave == ''
+              p [:warn, :deposit, 'set average price to zero', amount, coinid]
+              ave = 0
+            end
+            ave = ave.to_f
             timetable[date] << {
               :type => :tax, :amount => amount, :coinid => coinid,
-              :tax => :average, :unit => 'JPY', :unit_price => 0.0 # TODO
+              :tax => :average, :unit => 'JPY', :unit_price => ave
             }
           end
         end
@@ -451,6 +457,45 @@ files.each do |fn|
             :type => type, :amount => -amount * price - fee,
             :coinid => coinid2
           }
+          if coinid2 == 'JPY'
+            timetable[date] << {
+              :type => :tax, :amount => amount, :coinid => coinid1,
+              :tax => type, :unit => coinid2, :unit_price => price
+            }
+            if fee > 0
+              timetable[date] << {
+                :type => :tax, :amount => -fee, :coinid => 'JPY',
+                :tax => :fee,
+                :unit => 'JPY', :unit_price => 0.0
+              }
+            elsif fee < 0
+              timetable[date] << {
+                :type => :tax, :amount => -fee, :coinid => 'JPY',
+                :tax => :income,
+                :unit => 'JPY', :unit_price => 1.0
+              }
+            end
+          else
+            rate = 100000.0 # TODO get rate of coinid2 at date
+            pricejpy = price * rate
+            timetable[date] << {
+              :type => :tax, :amount => amount, :coinid => coinid1,
+              :tax => type, :unit => 'JPY', :unit_price => pricejpy
+            }
+            if fee > 0
+              timetable[date] << {
+                :type => :tax, :amount => -(fee * rate), :coinid => 'JPY',
+                :tax => :fee,
+                :unit => 'JPY', :unit_price => 0.0
+              }
+            elsif fee < 0
+              timetable[date] << {
+                :type => :tax, :amount => -(fee * rate), :coinid => 'JPY',
+                :tax => :income,
+                :unit => 'JPY', :unit_price => 1.0
+              }
+            end
+          end
         when :sell
           timetable[date] << {
             :type => type, :amount => -amount, :coinid => coinid1
@@ -459,6 +504,29 @@ files.each do |fn|
             :type => type, :amount => amount * price + fee,
             :coinid => coinid2
           }
+          if coinid2 == 'JPY'
+            # TODO
+          else
+            rate = 100000.0 # TODO get rate of coinid2 at date
+            pricejpy = price * rate
+            timetable[date] << {
+              :type => :tax, :amount => -amount, :coinid => coinid1,
+              :tax => type, :unit => 'JPY', :unit_price => pricejpy
+            }
+            if fee > 0
+              timetable[date] << {
+                :type => :tax, :amount => -(fee * rate), :coinid => 'JPY',
+                :tax => :fee,
+                :unit => 'JPY', :unit_price => 0.0
+              }
+            elsif fee < 0
+              timetable[date] << {
+                :type => :tax, :amount => -(fee * rate), :coinid => 'JPY',
+                :tax => :income,
+                :unit => 'JPY', :unit_price => 1.0
+              }
+            end
+          end
         end
       end
     when :bitbank_deposits
@@ -473,6 +541,18 @@ files.each do |fn|
         timetable[date] << {
           :type => :in, :amount => amount, :coinid => coinid
         }
+        if coinid != 'JPY'
+          ave = csv[4]
+          if ave.nil? || ave == ''
+            p [:warn, :deposit, 'set average price to zero', amount, coinid]
+            ave = 0
+          end
+          ave = ave.to_f
+          timetable[date] << {
+            :type => :tax, :amount => amount, :coinid => coinid,
+            :tax => :average, :unit => 'JPY', :unit_price => ave
+          }
+        end
       end
     when :bitbank_withdraws
       if i == 0
@@ -486,6 +566,11 @@ files.each do |fn|
         timetable[date] ||= []
         timetable[date] << {
           :type => :out, :amount => amount + fee, :coinid => coinid
+        }
+        timetable[date] << {
+          :type => :tax, :amount => fee, :coinid => coinid,
+          :tax => :fee,
+          :unit => 'JPY', :unit_price => 0.0
         }
       end
     end
