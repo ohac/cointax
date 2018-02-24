@@ -335,6 +335,12 @@ files.each do |fn|
         timetable[date] << {
           :type => type, :amount => -amount * price, :coinid => coinid2
         }
+        if coinid2 != 'JPY'
+          rate = {'XEM'=>0.4, 'MONA'=>3.0}[coinid2] # TODO get rate of coinid2 at date
+          coinid2 = 'JPY'
+          price *= rate
+          fee *= rate
+        end
         timetable[date] << {
           :type => :tax, :amount => amount, :coinid => coinid1,
           :tax => type, :unit => coinid2, :unit_price => price
