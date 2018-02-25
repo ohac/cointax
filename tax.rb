@@ -22,6 +22,46 @@ dust_table = {
   'RURU' => 0.1,
 }
 
+$ratedb = {}
+
+def getrate(date, coinid)
+  datestr = date.strftime('%Y-%m-%d')
+  case coinid
+  when 'MONA'
+    # TODO hard coded...
+    monadb = {
+      '2016-11-05' => { :usdjpy => 103.072, :usd => 0.029206 },
+      '2016-11-06' => { :usdjpy => 104.453, :usd => 0.030138 },
+      '2016-11-07' => { :usdjpy => 105.146, :usd => 0.029419 },
+    }
+    data = monadb[datestr]
+    data[:usd] * data[:usdjpy]
+  else
+    # TODO get JSON from coincheck
+=begin
+#!/bin/bash
+mkdir -s prices
+for y in `seq 2016 2018`; do
+  for m in `seq 1 2`; do
+    curl -s "https://coincheck.com/exchange/closing_prices/list?month=$m&year=$y" > prices/$y-$m.json
+  done
+done
+=end
+    ym = date.year.to_s + '-' + date.month.to_s
+    rate = $ratedb[ym]
+    if rate.nil?
+      ccjson = File.open("prices/#{ym}.json", 'r') do |fd|
+        fd.read()
+      end
+      ccdb = JSON.parse(ccjson)
+      rate = ccdb['closing_prices']
+      $ratedb[ym] = rate
+    end
+    data = rate[datestr]
+    data[coinid.downcase][1].to_f
+  end
+end
+
 class CoinCheck
   module Constants
     TYPE_TABLE = {
@@ -336,7 +376,7 @@ files.each do |fn|
           :type => type, :amount => -amount * price, :coinid => coinid2
         }
         if coinid2 != 'JPY'
-          rate = {'XEM'=>0.4, 'MONA'=>3.0}[coinid2] # TODO get rate of coinid2 at date
+          rate = getrate(date, coinid2)
           coinid2 = 'JPY'
           price *= rate
           fee *= rate
@@ -482,7 +522,7 @@ files.each do |fn|
               }
             end
           else
-            rate = 100000.0 # TODO get rate of coinid2 at date
+            rate = getrate(date, coinid2)
             pricejpy = price * rate
             timetable[date] << {
               :type => :tax, :amount => amount, :coinid => coinid1,
@@ -513,7 +553,7 @@ files.each do |fn|
           if coinid2 == 'JPY'
             # TODO
           else
-            rate = 100000.0 # TODO get rate of coinid2 at date
+            rate = getrate(date, coinid2)
             pricejpy = price * rate
             timetable[date] << {
               :type => :tax, :amount => -amount, :coinid => coinid1,
