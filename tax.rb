@@ -7,6 +7,9 @@ json = File.open('setting.json', 'r') do |fd|
 end
 setting = JSON.parse(json)
 
+folders = ['zaif', 'coincheck', 'bitbank']
+files = Dir.glob(folders.map{|folder|"#{folder}/*.csv"})
+
 verbose = setting['verbose']
 
 dust_table = {
@@ -27,6 +30,8 @@ $ratedb = {}
 def getrate(date, coinid)
   datestr = date.strftime('%Y-%m-%d')
   case coinid
+  when 'JPY'
+    1.0
   when 'MONA'
     # TODO hard coded...
     monadb = {
@@ -35,7 +40,24 @@ def getrate(date, coinid)
       '2016-11-07' => { :usdjpy => 105.146, :usd => 0.029419 },
     }
     data = monadb[datestr]
-    data[:usd] * data[:usdjpy]
+    if data
+      data[:usd] * data[:usdjpy]
+    else
+      p [:warn, :notfound, coinid, datestr]
+      3.0
+    end
+  when 'BCH'
+    # TODO hard coded...
+    bchdb = {
+      '2017-08-02' => { :usdjpy => 110.046, :usd => 452.66 },
+    }
+    data = bchdb[datestr]
+    if data
+      data[:usd] * data[:usdjpy]
+    else
+      p [:warn, :notfound, coinid, datestr]
+      3.0
+    end
   else
     # TODO get JSON from coincheck
 =begin
@@ -101,8 +123,6 @@ end
 
 ex_table = {}
 
-files = Dir.glob(['zaif/*.csv', 'coincheck/*.csv', 'bitbank/*.csv'])
-
 files.each do |fn|
   body = File.open(fn, 'r') do |fd|
     fd.read()
@@ -111,51 +131,51 @@ files.each do |fn|
   exchange_id = nil
   case fn
 
-  when /^coincheck\/[0-9]+_/
+  when /^coincheck.*\/[0-9]+_/
     exchange_id = :coincheck
     mode = :coincheck
     ym = fn.split(/[_.]/)[1,1].first
     year = ym[0,4].to_i
     month = ym[4,6].to_i
-  when /^coincheck\/my-complete-orders-/
+  when /^coincheck.*\/my-complete-orders-/
     exchange_id = :coincheck
     mode = :coincheck_orders
-  when /^coincheck\/buys-/
+  when /^coincheck.*\/buys-/
     exchange_id = :coincheck
     mode = :coincheck_buys
-  when /^coincheck\/sells-/
+  when /^coincheck.*\/sells-/
     exchange_id = :coincheck
     mode = :coincheck_sells
-  when /^coincheck\/withdraws-/
+  when /^coincheck.*\/withdraws-/
     exchange_id = :coincheck
     mode = :coincheck_withdraws
-  when /^coincheck\/deposits-/
+  when /^coincheck.*\/deposits-/
     exchange_id = :coincheck
     mode = :coincheck_deposits
-  when /^coincheck\/send-/
+  when /^coincheck.*\/send-/
     exchange_id = :coincheck
     mode = :coincheck_send
 
-  when /^zaif\/[0-9]+_/
+  when /^zaif.*\/[0-9]+_/
     exchange_id = :zaif
     mode = :zaif
-  when /^zaif\/.*_deposit.csv/
+  when /^zaif.*\/.*_deposit.csv/
     exchange_id = :zaif
     mode = :zaif_deposit
-  when /^zaif\/.*_withdraw.csv/
+  when /^zaif.*\/.*_withdraw.csv/
     exchange_id = :zaif
     mode = :zaif_withdraw
-  when /^zaif\/obtain_bonus.csv/
+  when /^zaif.*\/obtain_bonus.csv/
     exchange_id = :zaif
     mode = :zaif_obtain_bonus
 
-  when /^bitbank\/trade_history/
+  when /^bitbank.*\/trade_history/
     exchange_id = :bitbank
     mode = :bitbank
-  when /^bitbank\/withdraws-/
+  when /^bitbank.*\/withdraws-/
     exchange_id = :bitbank
     mode = :bitbank_withdraws
-  when /^bitbank\/deposits-/
+  when /^bitbank.*\/deposits-/
     exchange_id = :bitbank
     mode = :bitbank_deposits
 
@@ -375,17 +395,16 @@ files.each do |fn|
         timetable[date] << {
           :type => type, :amount => -amount * price, :coinid => coinid2
         }
-        if coinid2 != 'JPY'
-          rate = getrate(date, coinid2)
-          coinid2 = 'JPY'
-          price *= rate
-          fee *= rate
-        end
         timetable[date] << {
           :type => :tax, :amount => amount, :coinid => coinid1,
           :tax => type, :unit => coinid2, :unit_price => price
         }
         if fee > 0
+          if coinid2 != 'JPY'
+            rate = getrate(date, coinid2)
+            coinid2 = 'JPY'
+            fee *= rate
+          end
           timetable[date] << {
             :type => :tax, :amount => -fee, :coinid => coinid1,
             :tax => :fee,
@@ -506,7 +525,7 @@ files.each do |fn|
           if coinid2 == 'JPY'
             timetable[date] << {
               :type => :tax, :amount => amount, :coinid => coinid1,
-              :tax => type, :unit => coinid2, :unit_price => price
+              :tax => type, :unit => coinid2, :unit_price => price,
             }
             if fee > 0
               timetable[date] << {
@@ -523,10 +542,9 @@ files.each do |fn|
             end
           else
             rate = getrate(date, coinid2)
-            pricejpy = price * rate
             timetable[date] << {
               :type => :tax, :amount => amount, :coinid => coinid1,
-              :tax => type, :unit => 'JPY', :unit_price => pricejpy
+              :tax => type, :unit => coinid2, :unit_price => price,
             }
             if fee > 0
               timetable[date] << {
@@ -554,10 +572,9 @@ files.each do |fn|
             # TODO
           else
             rate = getrate(date, coinid2)
-            pricejpy = price * rate
             timetable[date] << {
               :type => :tax, :amount => -amount, :coinid => coinid1,
-              :tax => type, :unit => 'JPY', :unit_price => pricejpy
+              :tax => type, :unit => coinid2, :unit_price => price
             }
             if fee > 0
               timetable[date] << {
@@ -672,7 +689,16 @@ ex_table.each do |exid, exchange|
             puts '%s 報酬                                 損益 %6d   JPY' %
               [datestr, amount]
           else
-            total_price = (total_amount - amount) * ave + amount * unit_price
+            rate = 1.0
+            if taxtype == :buy && unit != 'JPY'
+              rate = getrate(date, unit)
+              unit_ave_price = average_price[unit]
+              profit = (rate - unit_ave_price) * unit_price * amount
+              puts '%s トレード                             損益 %6d   JPY' %
+                [datestr, profit]
+              total_profit += profit
+            end
+            total_price = (total_amount - amount) * ave + rate * amount * unit_price
             average_price[coinid] = total_price / total_amount
             if verbose
               puts '                                                                                                             %9.1f  JPY/%4s' %
@@ -686,7 +712,16 @@ ex_table.each do |exid, exchange|
             puts '%s 手数料                               損益 %6d   JPY' %
               [datestr, profit]
           else
-            profit = (unit_price - ave) * -amount
+            if taxtype == :sell && unit != 'JPY'
+              rate = getrate(date, unit)
+              unit_ave_price = average_price[coinid]
+
+              profit = rate*unit_price*-amount - unit_ave_price*-amount
+              puts "損益 #{profit} JPY"
+              unit = 'JPY'
+            else
+              profit = (unit_price - ave) * -amount
+            end
             total_profit += profit
             puts '%s %s %8.1f %4s/%4s x %8.2f 損益 %8.1f %s, 残高 %12.6f %4s, 平均単価 %9.1f %4s/%4s' %
               [datestr, taxtype == :fee ? '手数料' : '売却  ',
