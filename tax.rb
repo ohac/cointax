@@ -701,8 +701,8 @@ ex_table.each do |exid, exchange|
             total_price = (total_amount - amount) * ave + rate * amount * unit_price
             average_price[coinid] = total_price / total_amount
             if verbose
-              puts '                                                                                                             %9.1f  JPY/%4s' %
-                [average_price[coinid], coinid[0,4]]
+              puts '%s 平均単価更新                                                                             %9.1f  JPY/%4s' %
+                [datestr, average_price[coinid], coinid[0,4]]
             end
           end
         else
@@ -717,7 +717,15 @@ ex_table.each do |exid, exchange|
               unit_ave_price = average_price[coinid]
 
               profit = rate*unit_price*-amount - unit_ave_price*-amount
-              puts "損益 #{profit} JPY"
+              unit_ave_price = average_price[unit] || 0.0
+              unit_amount = current_stat[unit][:amount]
+              unit_delta = -amount * unit_price
+              new_rate = ((unit_amount - unit_delta)*unit_ave_price + unit_delta*rate) / unit_amount
+              average_price[unit] = new_rate
+              if verbose
+                puts '%s 平均単価更新                                                                             %9.1f  JPY/%4s' %
+                  [datestr, average_price[unit], unit[0,4]]
+              end
               unit = 'JPY'
             else
               profit = (unit_price - ave) * -amount
