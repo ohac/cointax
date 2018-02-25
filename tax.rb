@@ -565,7 +565,7 @@ files.each do |fn|
             :type => type, :amount => -amount, :coinid => coinid1
           }
           timetable[date] << {
-            :type => type, :amount => amount * price + fee,
+            :type => type, :amount => amount * price - fee,
             :coinid => coinid2
           }
           if coinid2 == 'JPY'
